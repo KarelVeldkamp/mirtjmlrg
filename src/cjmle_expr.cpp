@@ -9,23 +9,27 @@ using namespace std;
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::export]]
 arma::vec grad_neg_loglik_A_j_cpp(const arma::vec &response_j, const arma::vec &nonmis_ind_j,
-                                  const arma::vec &A_j, const arma::mat &theta){
+                                  const arma::vec &A_j, const arma::mat &theta, double lambda1 = 0, double lambda2 = 0){
   arma::vec tmp = response_j - 1.0 / (1.0 + arma::exp(-theta * A_j));
-  return -theta.t() * (nonmis_ind_j % tmp);
+  arma::mat grad = -theta.t() * (nonmis_ind_j % tmp);
+  arma::mat l1 = lambda1 * A_j/abs(A_j);
+  arma::mat l2 = lambda2 * 2 * A_j;
+  
+  return grad + l1 + l2;
 }
 // [[Rcpp::plugins(openmp)]]
 arma::mat Update_A_cpp(const arma::mat &A0, const arma::mat &response, const arma::mat &nonmis_ind,
-                       const arma::mat &theta1, double cc, double step_A = 5){
+                       const arma::mat &theta1, double cc, double step_A = 5, double lambda1 = 0, double lambda2 = 0){
   arma::mat A1 = A0.t();
   int J = A0.n_rows;
 #pragma omp parallel for num_threads(getmirtjml_threads())
   for(int j=0;j<J;++j){
     double step = step_A; 
-    arma::vec h = grad_neg_loglik_A_j_cpp(response.col(j), nonmis_ind.col(j), A0.row(j).t(), theta1);
+    arma::vec h = grad_neg_loglik_A_j_cpp(response.col(j), nonmis_ind.col(j), A0.row(j).t(), theta1, lambda1, lambda2);
     A1.col(j) = A0.row(j).t() - step * h;
     A1.col(j) = prox_func_cpp(A1.col(j), cc);
-    while(neg_loglik_j_cpp(response.col(j), nonmis_ind.col(j), A1.col(j), theta1) > 
-            neg_loglik_j_cpp(response.col(j), nonmis_ind.col(j), A0.row(j).t(), theta1) &&
+    while(neg_loglik_j_cpp(response.col(j), nonmis_ind.col(j), A1.col(j), theta1, lambda1, lambda2) > 
+            neg_loglik_j_cpp(response.col(j), nonmis_ind.col(j), A0.row(j).t(), theta1, lambda1, lambda2) &&
           step > 1e-7){
       step *= 0.5;
       A1.col(j) = A0.row(j).t() - step * h;
@@ -35,20 +39,21 @@ arma::mat Update_A_cpp(const arma::mat &A0, const arma::mat &response, const arm
   }
   return(A1.t());
 }
+
 // [[Rcpp::plugins(openmp)]]
 Rcpp::List Update_A_init_cpp(const arma::mat &A0, const arma::mat &response, const arma::mat &nonmis_ind,
-                       const arma::mat &theta1, double cc, double step_A = 100){
+                       const arma::mat &theta1, double cc, double step_A = 100, double lambda1 = 0, double lambda2 = 0){
   arma::mat A1 = A0.t();
   int J = A0.n_rows;
   arma::vec final_step(J);
 #pragma omp parallel for num_threads(getmirtjml_threads())
   for(int j=0;j<J;++j){
     double step = step_A; 
-    arma::vec h = grad_neg_loglik_A_j_cpp(response.col(j), nonmis_ind.col(j), A0.row(j).t(), theta1);
+    arma::vec h = grad_neg_loglik_A_j_cpp(response.col(j), nonmis_ind.col(j), A0.row(j).t(), theta1, lambda1, lambda2);
     A1.col(j) = A0.row(j).t() - step * h;
     A1.col(j) = prox_func_cpp(A1.col(j), cc);
-    while(neg_loglik_j_cpp(response.col(j), nonmis_ind.col(j), A1.col(j), theta1) > 
-            neg_loglik_j_cpp(response.col(j), nonmis_ind.col(j), A0.row(j).t(), theta1) &&
+    while(neg_loglik_j_cpp(response.col(j), nonmis_ind.col(j), A1.col(j), theta1, lambda1, lambda2) > 
+            neg_loglik_j_cpp(response.col(j), nonmis_ind.col(j), A0.row(j).t(), theta1, lambda1, lambda2) &&
             step > 1e-7){
       step *= 0.5;
       A1.col(j) = A0.row(j).t() - step * h;
@@ -59,28 +64,30 @@ Rcpp::List Update_A_init_cpp(const arma::mat &A0, const arma::mat &response, con
   return(Rcpp::List::create(Rcpp::Named("A") = A1.t(),
                             Rcpp::Named("step_A") = final_step));
 }
+
 // [[Rcpp::export]]
 Rcpp::List cjmle_expr_cpp(const arma::mat &response, const arma::mat &nonmis_ind, arma::mat theta0,
-                                arma::mat A0, double cc, double tol, bool print_proc){
+                                arma::mat A0, double cc, double tol, bool print_proc, double lambda1 = 0, double lambda2 = 0){
   int N = theta0.n_rows;
   int J = A0.n_rows;
+  
   // Adaptively find initial steps when updating A and theta
-  Rcpp::List tmp_theta = Update_theta_init_cpp(theta0, response, nonmis_ind, A0, cc);
+  Rcpp::List tmp_theta = Update_theta_init_cpp(theta0, response, nonmis_ind, A0, cc, 1000, lambda1, lambda2);
   arma::mat theta1 = tmp_theta[0];
   arma::vec theta_step = tmp_theta[1];
   double theta_init_step = mean(theta_step);
-  Rcpp::List tmp_A = Update_A_init_cpp(A0, response, nonmis_ind, theta1, cc);
+  Rcpp::List tmp_A = Update_A_init_cpp(A0, response, nonmis_ind, theta1, cc, 100, lambda1, lambda2);
   arma::mat A1 = tmp_A[0];
   arma::vec A_step = tmp_A[1];
   double A_init_step = mean(A_step)/2;
   
-  double eps = neg_loglik(theta0*A0.t(), response, nonmis_ind) - neg_loglik(theta1*A1.t(), response, nonmis_ind);
+  double eps = neg_loglik(theta0, A0.t(), response, nonmis_ind, lambda1, lambda2) - neg_loglik(theta1, A1.t(), response, nonmis_ind, lambda1, lambda2);
   while(eps > tol){
     theta0 = theta1;
     A0 = A1;
-    theta1 = Update_theta_cpp(theta0, response, nonmis_ind, A0, cc, theta_init_step);
-    A1 = Update_A_cpp(A0, response, nonmis_ind, theta1, cc, A_init_step);
-    eps = neg_loglik(theta0*A0.t(), response, nonmis_ind) - neg_loglik(theta1*A1.t(), response, nonmis_ind);
+    theta1 = Update_theta_cpp(theta0, response, nonmis_ind, A0, cc, theta_init_step, lambda1, lambda2);
+    A1 = Update_A_cpp(A0, response, nonmis_ind, theta1, cc, A_init_step, lambda1, lambda2);
+    eps = neg_loglik(theta0, A0.t(), response, nonmis_ind, lambda1, lambda2) - neg_loglik(theta1, A1.t(), response, nonmis_ind, lambda1, lambda2);
     // if(print_proc) Rprintf("\n eps: %f", eps);
     if(print_proc){
       double dist = (log(eps)-log(N*J)) / (log(tol)-log(N*J));
@@ -97,7 +104,7 @@ Rcpp::List cjmle_expr_cpp(const arma::mat &response, const arma::mat &nonmis_ind
   }
   return Rcpp::List::create(Rcpp::Named("A") = A1,
                             Rcpp::Named("theta") = theta1,
-                            Rcpp::Named("obj") = neg_loglik(theta1*A1.t(), response, nonmis_ind));
+                            Rcpp::Named("obj") = neg_loglik(theta1, A1.t(), response, nonmis_ind));
 }
 //' Simulation for the book chapter
 Rcpp::List cjmle_expr_simu(const arma::mat &response, const arma::mat &nonmis_ind, arma::mat theta0,
@@ -129,14 +136,14 @@ Rcpp::List cjmle_expr_simu(const arma::mat &response, const arma::mat &nonmis_in
   arma::vec A_step = tmp_A[1];
   double A_init_step = arma::mean(A_step)/2;
   
-  double eps = neg_loglik(theta0*A0.t(), response, nonmis_ind) - neg_loglik(theta1*A1.t(), response, nonmis_ind);
+  double eps = neg_loglik(theta0, A0.t(), response, nonmis_ind) - neg_loglik(theta1, A1.t(), response, nonmis_ind);
   while(eps > tol){
     mcn += 1;
     theta0 = theta1;
     A0 = A1;
     theta1 = Update_theta_cpp(theta0, response, nonmis_ind, A0, cc, theta_init_step);
     A1 = Update_A_cpp(A0, response, nonmis_ind, theta1, cc, A_init_step);
-    eps = neg_loglik(theta0*A0.t(), response, nonmis_ind) - neg_loglik(theta1*A1.t(), response, nonmis_ind);
+    eps = neg_loglik(theta0, A0.t(), response, nonmis_ind) - neg_loglik(theta1, A1.t(), response, nonmis_ind);
     
     // calculate cosine between A_hat and A_true
     arma::svd(U2, s2, V2, A1.cols(1, K));
@@ -161,7 +168,7 @@ Rcpp::List cjmle_expr_simu(const arma::mat &response, const arma::mat &nonmis_in
   }
   return Rcpp::List::create(Rcpp::Named("A") = A1,
                             Rcpp::Named("theta") = theta1,
-                            Rcpp::Named("obj") = neg_loglik(theta1*A1.t(), response, nonmis_ind),
+                            Rcpp::Named("obj") = neg_loglik(theta1, A1.t(), response, nonmis_ind),
                             Rcpp::Named("sin_angle") = sin_angle.subvec(0, mcn-1));
 }
 

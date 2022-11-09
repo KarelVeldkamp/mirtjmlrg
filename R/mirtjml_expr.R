@@ -32,7 +32,7 @@
 #' @importFrom GPArotation GPFoblq
 #' @export mirtjml_expr
 mirtjml_expr <- function(response, K, theta0 = NULL, A0 = NULL, d0 = NULL, cc = NULL, 
-                    tol = 5, print_proc = TRUE){
+                    tol = 5, print_proc = TRUE, lambda1=0, lambda2=0){
   N <- nrow(response)
   J <- ncol(response)
   nonmis_ind <- 1 - is.na(response)
@@ -57,8 +57,9 @@ mirtjml_expr <- function(response, K, theta0 = NULL, A0 = NULL, d0 = NULL, cc = 
   if(is.null(cc)){
     cc = 5*sqrt(K)
   }
+
   res <- cjmle_expr_cpp(response, nonmis_ind, cbind(rep(1,N),theta0),
-                        cbind(d0,A0), cc, tol, print_proc)
+                        cbind(d0,A0), cc, tol, print_proc, lambda1, lambda2)
   res_standard <- standardization_cjmle(res$theta[,2:(K+1)], res$A[,2:(K+1)], res$A[,1])
   if(K > 1){
     temp <- GPFoblq(res_standard$A1, method = "geomin")

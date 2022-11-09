@@ -36,7 +36,7 @@
 #' 
 #' @importFrom stats cov
 #' @export mirtjml_conf
-mirtjml_conf <- function(response, Q, theta0, A0, d0, cc = NULL, tol = 5, print_proc = TRUE){
+mirtjml_conf <- function(response, Q, theta0, A0, d0, cc = NULL, tol = 5, print_proc = TRUE, lambda1 = 0, lambda2 = 0){
   N <- nrow(response)
   J <- ncol(response)
   K <- ncol(Q)
@@ -47,7 +47,7 @@ mirtjml_conf <- function(response, Q, theta0, A0, d0, cc = NULL, tol = 5, print_
   }
   t1 <- Sys.time()
   res <- cjmle_conf_cpp(response, nonmis_ind, cbind(rep(1,N),theta0),cbind(d0,A0), 
-                        cbind(rep(1,J),Q), cc, tol, print_proc)
+                        cbind(rep(1,J),Q), cc, tol, print_proc, lambda1, lambda2)
   t2 <- Sys.time()
   if(print_proc){
     cat("\n\n", "Precision reached!\n")
