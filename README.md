@@ -1,17 +1,10 @@
-[![cran checks](https://cranchecks.info/badges/summary/mirtjml)](https://cran.r-project.org/web/checks/check_results_mirtjml.html)
-[![Travis-CI Build Status](https://travis-ci.com/slzhang-fd/mirtjml.svg?branch=CRAN)](https://travis-ci.com/slzhang-fd/mirtjml)
-[![CRAN\_Status\_Badge](http://www.r-pkg.org/badges/version/mirtjml)](https://cran.r-project.org/package=mirtjml)
-[![downloads](http://cranlogs.r-pkg.org/badges/mirtjml)](https://www.rdocumentation.org/trends)
-# mirtjml
+# mirtjmlrg
 
-Joint Maximum Likelihood Estimation for High-Dimensional Item Factor Analysis
+regularized Joint Maximum Likelihood Estimation for High-Dimensional Item Factor Analysis
 
 ## Description
 
-The mirtjml package provides constrained joint maximum likelihood estimation
-algorithms for item factor analysis (IFA) based on multidimensional item response theory
-models. So far, we provide functions for exploratory and confirmatory IFA based on the 
-multidimensional two parameter logistic (M2PL) model for binary response data. Comparing 
-with traditional estimation methods for IFA, the methods implemented in this package scale
-better to data with large numbers of respondents, items, and latent factors. The computation
-is facilitated by multiprocessing 'OpenMP' API.
+This fork contains an adaptation of the [mirtjml code](https://github.com/cran/mirtjml) that allows you to add a regularisation term to the likelihood during training.
+
+The package works exactly the same as the original package with the exception of two new parameters: lambda1 and lambda2. 
+These paramters detemine the size of the L1 and L2 penalty terms. When both terms are set to zero, the model will be equivalent to standard mirtjml. 
