@@ -1,6 +1,6 @@
 # mirtjmlrg
 
-regularized Joint Maximum Likelihood Estimation for High-Dimensional Item Factor Analysis
+Regularized Joint Maximum Likelihood Estimation for High-Dimensional Item Factor Analysis
 
 ## Description
 
